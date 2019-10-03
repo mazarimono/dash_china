@@ -41,8 +41,7 @@ app.layout = html.Div(
             },
         ),
         html.Div(
-            [dcc.Location(id="url", refresh=False)],
-            id="contents",
+            [dcc.Location(id="url", refresh=False), html.Div(id="contents")],
             style={
                 "width": "80%",
                 "height": 800,
