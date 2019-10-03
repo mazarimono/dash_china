@@ -76,7 +76,7 @@ self_intro = html.Div([
         html.Div([
         html.P("我叫 小川 英幸（wechat： hide_xiao）"),
         html.P("我来自 日本 京都（你知吗？）"),
-
+        
         ], style={"fontSize": 30, "textAlign": "center", "margin": "5%"}),
     ], style={"width": "60%", "display":"inline-block"})
 ])
