@@ -2,18 +2,37 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_table
-from dash.dependencies import Input, Output
+import dash_daq as daq
+import dash_canvas
+from dash.dependencies import Input, State, Output
+from dash.exceptions import PreventUpdate
 
 import plotly
 import plotly.graph_objects as go
 import plotly.express as px
+import numpy as np
 import pandas as pd
+import skimage
 import json
 import os
+
+from dash_canvas.components import image_upload_zone
+from dash_canvas.utils import (
+    parse_jsonstring,
+    superpixel_color_segmentation,
+    image_with_contour,
+    image_string_to_PILImage,
+    array_to_data_url,
+)
+from dash_canvas.components import image_upload_zone
+
 
 # data read
 citydata = pd.read_csv("assets/citydata.csv", index_col=0)
 
+# image read
+filepath = "assets/me.jpg"
+filename = array_to_data_url(skimage.io.imread(filepath))
 
 # mapbox
 px.set_mapbox_access_token(
@@ -21,7 +40,27 @@ px.set_mapbox_access_token(
 xaWsxeGtmM3dweDh5bjgydGFxIn0.3vrfsqZ_kGPGhi4_npruGg"
 )
 
-#
+# markdownのスタイル
+
+mkstyle_ins = {
+    "fontSize": 30,
+    "width": "80%",
+    "margin": "auto",
+    "backgroundColor": "white",
+    "padding": "3%",
+    "borderRadius": 10,
+}
+
+mkstyle_ous = {
+    "width": "80%",
+    "margin": "auto",
+    "backgroundColor": "#cbe86e",
+    "padding": "3%",
+    "margin": "3% auto ",
+    "borderRadius": 15,
+}
+
+# タイトル用の関数
 def head_title(word):
     return html.Div(
         [html.H1(word, style={"textAlign": "center"})],
@@ -57,7 +96,9 @@ app_dash.layout = html.Div(
                         html.Div([dcc.Link("about_dash", href="/about_dash")]),
                         html.Div([dcc.Link("dash_basic", href="/dash_basic")]),
                         html.Div([dcc.Link("dash_graphs", href="/dash_graphs")]),
-
+                        html.Div(
+                            [dcc.Link("dash_components", href="/dash_components")]
+                        ),
                         html.Div(
                             [
                                 html.Img(
@@ -483,6 +524,7 @@ about_dash = html.Div(
                     """
             - Dash is Analytical web application.
                 - Open Souce Python library.
+                - made by [plotly](https://plot.ly/).
                 - Write code with only Python.
                 - Made by Flask、plotly.js、react.js.
                 - [Document](https://dash.plot.ly/)
@@ -538,28 +580,41 @@ dash_basic = html.Div(
                     ],
                     style={"width": "70%", "margin": "auto"},
                 ),
-                html.Div([
-                    html.Div([
-                        html.H2("Dash application made by layout and callbacks.", style={"textAlign":"center"})
-                    ], style={"backgroundColor": "#fbffb9"}),
-                    html.Div([
-                        dcc.Markdown("""
+                html.Div(
+                    [
+                        html.Div(
+                            [
+                                html.H2(
+                                    "Dash application made by layout and callbacks.",
+                                    style={"textAlign": "center"},
+                                )
+                            ],
+                            style={"backgroundColor": "#fbffb9"},
+                        ),
+                        html.Div(
+                            [
+                                dcc.Markdown(
+                                    """
                             - Layout
                                 - make what looks like
                                 - use components
                             - callbacks
                                 - Keys to make applications interactive.
                                 - Use Input State Output
-                        """),
-
-                    ], style={"fontSize": 30, "width": "80%", "margin": "5% auto 5%", "backgroundColor": "#fbffb9", "padding":"2%", "borderRadius": 10})
-                ]),
+                        """,
+                                    style=mkstyle_ins,
+                                )
+                            ],
+                            style=mkstyle_ous,
+                        ),
+                    ]
+                ),
                 # コードのマークダウンを直す。
                 html.Div(
-                            [
-                                html.P("Code ", style={"fontSize": 30}),
-                                dcc.Markdown(
-                                    """
+                    [
+                        html.P("Code ", style={"fontSize": 30}),
+                        dcc.Markdown(
+                            """
             import dash     
             import dash_core_components as dcc     
             import dash_html_components as html     
@@ -596,38 +651,627 @@ dash_basic = html.Div(
 
             app.run_server(debug=True)     
             """,
-            style={
-                "fontSize": 30,
-                "width": "80%",
-                "margin": "auto",
-                "backgroundColor": "white",
-                "padding": "3%",
-                "borderRadius": 10,
-                },
-            ), ], style={
-                "width": "80%",
-                "margin": "auto",
-                "backgroundColor": "#cbe86e",
-                "padding": "3%",
-                "borderRadius": 15,
-                    },
+                            style=mkstyle_ins,
+                        ),
+                    ],
+                    style=mkstyle_ous,
                 ),
             ]
         ),
     ]
 )
 
-dash_graphs = html.Div([
-    head_title("Graphs"),
-    html.Div([
-        
-    ])
-])
 
-@app_dash.callback(Output("hello-graph-callback", "children"),
-            [Input("hello-graph", "hoverData")])
+@app_dash.callback(
+    Output("hello-graph-callback", "children"), [Input("hello-graph", "hoverData")]
+)
 def hello_graph_callback(hoverData):
     return json.dumps(hoverData)
+
+
+# dash_graphs
+### Think about graphs to show sample.
+graphModuleList = ["dash", "plotly.graph_objects", "plotly_express"]
+go_graphTypes = []
+px_graphTypes = []
+
+dash_graphs = html.Div(
+    [
+        head_title("Graphs"),
+        html.Div(
+            [
+                html.Div(
+                    [
+                        dcc.Markdown(
+                            """
+                Dash graphs need to use dash_core_components module's Graph class.
+                Inside of it, you can use plotly! Off cource you can write it by dash.
+                        """,
+                            style=mkstyle_ins,
+                        )
+                    ],
+                    style=mkstyle_ous,
+                ),
+                html.Div(
+                    [
+                        html.Div(
+                            [
+                                html.H2(
+                                    "Graph by Modules", style={"textAlign": "center"}
+                                )
+                            ],
+                            style={"backgroundColor": "#fbffb9"},
+                        ),
+                        dcc.RadioItems(
+                            id="graphs_radio",
+                            options=[{"label": i, "value": i} for i in graphModuleList],
+                            value="dash",
+                            labelStyle={"display": "inline-block", "margin": "1%"},
+                        ),
+                    ],
+                    style={"fontSize": 30},
+                ),
+                html.Div(id="graph_by_module"),
+                html.Div(
+                    [html.H2("Graph Types", style={"textAlign": "center"})],
+                    style={"backgroundColor": "#fbffb9"},
+                ),
+                html.Div(
+                    [
+                        dcc.Markdown(
+                            """
+                    [Plotly.py](https://plot.ly/python/) library supports over 40 chart types.
+                    Here shows some exmples.
+                    """,
+                            style=mkstyle_ins,
+                        )
+                    ],
+                    style=mkstyle_ous,
+                ),
+                dcc.RadioItems(
+                    id="graphModule",
+                    options=[
+                        {"label": i, "value": i}
+                        for i in ["plotly.graph_objects", "plotly.express"]
+                    ],
+                    value="plotly.graph_objects",
+                    labelStyle={
+                        "display": "inline-block",
+                        "margin": "2%",
+                        "fontSize": 30,
+                    },
+                ),
+                html.Div(id="graphType"),
+            ],
+            style={"margin": "5%"},
+        ),
+    ]
+)
+
+# マークダウン内のコメントアウトの処理
+
+# グラフモジュールによる違いを見せるコールバック
+@app_dash.callback(
+    Output("graph_by_module", "children"), [Input("graphs_radio", "value")]
+)
+def update_by_graph_module(module_name):
+    gapminder2007 = gapminder[gapminder["year"] == 2007]
+    if module_name == "dash":
+        return html.Div(
+            [
+                dcc.Graph(
+                    figure={
+                        "data": [
+                            {
+                                "x": gapminder2007["gdpPercap"],
+                                "y": gapminder2007["lifeExp"],
+                                "mode": "markers",
+                            }
+                        ],
+                        "layout": {
+                            "height": 400,
+                            "xaxis": {"title": "gdpPercap(log)", "type": "log"},
+                            "yaxis": {"title": "lifeExp"},
+                            "title": "Graph by Dash",
+                        },
+                    }
+                ),
+                html.Div(
+                    [
+                        dcc.Markdown(
+                            """
+            dcc.Graph(figure={"data": [{"x": gapminder2007["gdpPercap"], "y":gapminder2007["lifeExp"],"mode":"markers"
+            }], "layout": {"height": 400, "xaxis": {"title": "gdpPercap(log)", "type": "log"}, "yaxis":{"title": "lifeExp"}, "title":"Graph by Dash"}})
+            """,
+                            style=mkstyle_ins,
+                        )
+                    ],
+                    style=mkstyle_ous,
+                ),
+            ]
+        )
+
+    elif module_name == "plotly.graph_objects":
+        return html.Div(
+            [
+                dcc.Graph(
+                    figure={
+                        "data": [
+                            go.Scatter(
+                                x=gapminder2007["gdpPercap"],
+                                y=gapminder2007["lifeExp"],
+                                mode="markers",
+                            )
+                        ],
+                        "layout": go.Layout(
+                            height=400,
+                            xaxis={"title": "gdpPercap(log)", "type": "log"},
+                            yaxis={"title": "lifeExp"},
+                            title="Graph by plotly.graph_objects",
+                        ),
+                    }
+                ),
+                html.Div(
+                    [
+                        dcc.Markdown(
+                            """
+            dcc.Graph(figure={"data": [go.Scatter(x=gapminder2007["gdpPercap"], y=gapminder2007["lifeExp"], mode="markers")],
+            "layout":go.Layout(height=400, xaxis={"title": "gdpPercap(log)", "type":"log"}, yaxis={"title":"lifeExp"}, title= "Graph by plotly.graph_objects")})
+            """,
+                            style=mkstyle_ins,
+                        )
+                    ],
+                    style=mkstyle_ous,
+                ),
+            ]
+        )
+
+    else:
+        return html.Div(
+            [
+                dcc.Graph(
+                    figure=px.scatter(
+                        gapminder2007,
+                        x="gdpPercap",
+                        y="lifeExp",
+                        height=400,
+                        log_x=True,
+                        title="Graph by plotly.express",
+                    )
+                ),
+                html.Div(
+                    [
+                        dcc.Markdown(
+                            """
+            dcc.Graph(figure=px.scatter(gapminder2007, x="gdpPercap", y="lifeExp", height=400, log_x=True, title="Graph by plotly.express"))
+            """,
+                            style=mkstyle_ins,
+                        )
+                    ],
+                    style=mkstyle_ous,
+                ),
+            ]
+        )
+
+
+# グラフサンプルを表示するコールバック
+# 時間があれば作りこみたい。今はとりあえずいくつか作りたい。
+
+# Components
+params = ["Weight", "Torque", "Width", "Height"]
+
+dash_components = html.Div(
+    [
+        head_title("Components"),
+        html.Div(
+            [
+                html.Div(
+                    [
+                        dcc.Markdown(
+                            """
+            Dash's layout must be made by components.I will show 7 components ready to use.
+            [You can make your own components](https://dash.plot.ly/plugins)!
+        """,
+                            style=mkstyle_ins,
+                        )
+                    ],
+                    style=mkstyle_ous,
+                ),
+                html.Div(
+                    [html.H2("dash_html_components", style={"textAlign": "center"})],
+                    style={"backgroundColor": "#fbffb9"},
+                ),
+                html.Div(
+                    [
+                        dcc.Markdown(
+                            """
+            Dash_html_components provide HTML Tags as Python Classes.     
+                 
+            if you want to write       
+                  
+            ```
+            <h1>Hello China!</h1>
+            ```
+                   
+            with Dash_html_components module      
+                   
+            ```
+            import dash_html_components as html
+            html.H1("Hello China!")
+            ```
+
+            Dash_components_components has 131 classes. Covers all HTML tags? I have no idea.
+
+        """,
+                            style=mkstyle_ins,
+                        )
+                    ],
+                    style=mkstyle_ous,
+                ),
+                html.Div(
+                    [html.H2("Dash_Core_Components", style={"textAlign": "center"})],
+                    style={"backgroundColor": "#fbffb9"},
+                ),
+                html.Div(
+                    [
+                        dcc.Markdown(
+                            """
+            Dash_Core_Components provides components like sliders, dropdowns, graphs and more.
+            Many conponents fires callback. And application gets interactive.
+        """,
+                            style=mkstyle_ins,
+                        )
+                    ],
+                    style=mkstyle_ous,
+                ),
+                html.Div(
+                    [
+                        html.Div(
+                            [
+                                html.P("X axis value: ", style={"fontSize": 25}),
+                                dcc.Dropdown(
+                                    id="dcc_dd_x",
+                                    options=[
+                                        {"label": i, "value": i}
+                                        for i in gapminder.columns[3:6]
+                                    ],
+                                    value="lifeExp",
+                                ),
+                            ],
+                            style={"width": "49%", "float": "left"},
+                        ),
+                        html.Div(
+                            [
+                                html.P("Y axis value: ", style={"fontSize": 25}),
+                                dcc.Dropdown(
+                                    id="dcc_dd_y",
+                                    options=[
+                                        {"label": i, "value": i}
+                                        for i in gapminder.columns[3:6]
+                                    ],
+                                    value="pop",
+                                ),
+                            ],
+                            style={"width": "49%", "display": "inline-block"},
+                        ),
+                        html.Div(id="show_dccs_graph"),
+                        # The reason is not clear but cannot be displayed...(RangeSlider)
+                        # Try to add RangeSlider Later///
+                    ]
+                ),
+                html.Div(
+                    [
+                        html.Div(
+                            [html.H2("Dash Table", style={"textAlign": "center"})],
+                            style={"backgroundColor": "#fbffb9"},
+                        ),
+                        html.Div(
+                            [
+                                dcc.Markdown(
+                                    """
+                Dash Datatable is interactive table. This can be use like Excel.
+            """,
+                                    style=mkstyle_ins,
+                                )
+                            ],
+                            style=mkstyle_ous,
+                        ),
+                        html.Div(
+                            [
+                                dash_table.DataTable(
+                                    id="table-editing-simple",
+                                    columns=(
+                                        [{"id": "Model", "name": "Model"}]
+                                        + [{"id": p, "name": p} for p in params]
+                                    ),
+                                    data=[
+                                        dict(Model=i, **{param: 0 for param in params})
+                                        for i in range(1, 5)
+                                    ],
+                                    editable=True,
+                                ),
+                                dcc.Graph(id="table-editing-simple-output"),
+                            ]
+                        ),
+                    ]
+                ),
+                # dash_daq
+                html.Div(
+                    [html.H2("Dash Daq", style={"textAlign": "center"})],
+                    style={"backgroundColor": "#fbffb9"},
+                ),
+                html.Div(
+                    [
+                        dcc.Markdown(
+                            """
+            Dash Daq is for Data aquisition. It can make beautiful UIs.Tools for Measuring 
+            such as voltage,temperature, pressure and more. 
+        """,
+                            style=mkstyle_ins,
+                        )
+                    ],
+                    style=mkstyle_ous,
+                ),
+                html.Div(
+                    [
+                        dcc.Interval(
+                            id="daq-interval",
+                            interval=1000,
+                            n_intervals=0,
+                            disabled=True,
+                        ),
+                        daq.PowerButton(
+                            id="daq-powerbutton", on=False, size=100, color="green"
+                        ),
+                        html.Div(id="daq-realtime"),
+                    ]
+                ),
+                # dash_canvas
+                html.Div(
+                    [html.H2("Dash Canvas", style={"textAlign": "center"})],
+                    style={"backgroundColor": "#fbffb9"},
+                ),
+                html.Div(
+                    [
+                        dcc.Markdown(
+                            """
+            Dash Canvas is drawing and annotation for image processing. Annotation for 
+            Machine Learning training set and more.
+        """,
+                            style=mkstyle_ins,
+                        )
+                    ],
+                    style=mkstyle_ous,
+                ),
+                html.Div(
+                    [
+                        html.Div(
+                            [
+                                dash_canvas.DashCanvas(
+                                    id="canvas-bg",
+                                    width=500,
+                                    filename=filename,
+                                    lineWidth=8,
+                                    goButtonTitle="Remove background",
+                                    hide_buttons=["line", "zoom", "pan"],
+                                )
+                            ],
+                            style={"display": "inline-block", "marginRight": "5%"},
+                        ),
+                        html.Div(
+                            [html.Img(id="seg-image", width=500)],
+                            style={"display": "inline-block"},
+                        ),
+                        html.Div(
+                            [
+                                dcc.Link(
+                                    "Dash Canvas Document",
+                                    href="https://dash.plot.ly/canvas",
+                                )
+                            ],
+                            style={"margin": "5%", "textAlign": "center"},
+                        ),
+                    ]
+                ),
+                html.Div(
+                    [html.H2("Dash Cytoscape", style={"textAlign": "center"})],
+                    style={"backgroundColor": "#fbffb9"},
+                ),
+                html.Div(
+                    [
+                        dcc.Markdown(
+                            """
+                        Dash Cytoscape is a network visualization components. Using Cytoscape.js.
+                        
+                    """
+                        )
+                    ]
+                ),
+            ],
+            style={"margin": "5%"},
+        ),
+    ]
+)
+
+# dcc sample callback
+@app_dash.callback(
+    Output("show_dccs_graph", "children"),
+    [Input("dcc_dd_x", "value"), Input("dcc_dd_y", "value")],
+)
+def update_xy_data_graph(x_value, y_value):
+    return dcc.Graph(
+        figure=px.scatter(
+            gapminder,
+            x=x_value,
+            y=y_value,
+            color="year",
+            hover_name="country",
+            log_x=True,
+            log_y=True,
+            title="Gapminder Chart X: {}, Y: {}".format(x_value, y_value),
+        )
+    )
+
+
+# dash_table sample callback
+
+
+@app_dash.callback(
+    Output("table-editing-simple-output", "figure"),
+    [Input("table-editing-simple", "data"), Input("table-editing-simple", "columns")],
+)
+def display_output(rows, columns):
+    df = pd.DataFrame(rows, columns=[c["name"] for c in columns])
+    return {
+        "data": [
+            {
+                "type": "parcoords",
+                "dimensions": [
+                    {"label": col["name"], "values": df[col["id"]]} for col in columns
+                ],
+            }
+        ]
+    }
+
+
+# dash_daq sample callback
+@app_dash.callback(Output("daq-interval", "disabled"), [Input("daq-powerbutton", "on")])
+def wakeupCall(switch):
+    if switch == 1:
+        return False
+    else:
+        return True
+
+
+@app_dash.callback(
+    Output("daq-realtime", "children"), [Input("daq-interval", "n_intervals")]
+)
+def wakeupDaq(n_intervals):
+    if n_intervals:
+        n1 = np.random.random() * 10
+        n2 = np.random.random() * 10
+        n3 = np.random.random() * 10
+        n4 = np.random.random() * 10
+        n5 = np.random.random() * 10
+        n6 = np.random.random() * 10
+        n7 = np.random.random() * 10
+        n_sum = n1 + n2 + n3 + n4 + n5 + n6 + n7
+
+        return html.Div(
+            [
+                daq.GraduatedBar(
+                    color={
+                        "gradient": True,
+                        "ranges": {"green": [0, 4], "yellow": [4, 7], "red": [7, 10]},
+                    },
+                    showCurrentValue=True,
+                    vertical=True,
+                    value=n1,
+                    size=400,
+                    style={"display": "inline-block"},
+                ),
+                daq.GraduatedBar(
+                    color={
+                        "gradient": True,
+                        "ranges": {"green": [0, 4], "yellow": [4, 7], "red": [7, 10]},
+                    },
+                    showCurrentValue=True,
+                    vertical=True,
+                    value=n2,
+                    size=400,
+                    style={"display": "inline-block", "marginLeft": "5%"},
+                ),
+                daq.GraduatedBar(
+                    color={
+                        "gradient": True,
+                        "ranges": {"green": [0, 4], "yellow": [4, 7], "red": [7, 10]},
+                    },
+                    showCurrentValue=True,
+                    vertical=True,
+                    value=n3,
+                    size=400,
+                    style={"display": "inline-block", "marginLeft": "5%"},
+                ),
+                daq.GraduatedBar(
+                    color={
+                        "gradient": True,
+                        "ranges": {"green": [0, 4], "yellow": [4, 7], "red": [7, 10]},
+                    },
+                    showCurrentValue=True,
+                    vertical=True,
+                    value=n4,
+                    size=400,
+                    style={"display": "inline-block", "marginLeft": "5%"},
+                ),
+                daq.GraduatedBar(
+                    color={
+                        "gradient": True,
+                        "ranges": {"green": [0, 4], "yellow": [4, 7], "red": [7, 10]},
+                    },
+                    showCurrentValue=True,
+                    vertical=True,
+                    value=n5,
+                    size=400,
+                    style={"display": "inline-block", "marginLeft": "5%"},
+                ),
+                daq.GraduatedBar(
+                    color={
+                        "gradient": True,
+                        "ranges": {"green": [0, 4], "yellow": [4, 7], "red": [7, 10]},
+                    },
+                    showCurrentValue=True,
+                    vertical=True,
+                    value=n6,
+                    size=400,
+                    style={"display": "inline-block", "marginLeft": "5%"},
+                ),
+                daq.GraduatedBar(
+                    color={
+                        "gradient": True,
+                        "ranges": {"green": [0, 4], "yellow": [4, 7], "red": [7, 10]},
+                    },
+                    showCurrentValue=True,
+                    vertical=True,
+                    value=n7,
+                    size=400,
+                    style={"display": "inline-block", "marginLeft": "5%"},
+                ),
+                daq.LEDDisplay(value=n_sum),
+            ],
+            style={"textAlign": "center", "margin": "5%"},
+        )
+
+
+# dash canvas
+
+
+@app_dash.callback(
+    Output("seg-image", "src"),
+    [Input("canvas-bg", "json_data"), Input("canvas-bg", "image_content")],
+)
+def update_figure(string, image):
+    if string:
+        if image is None:
+            im = skimage.io.imread(filepath)
+        else:
+            im = image_string_to_PILImage(image)
+            im = np.asarray(im)
+        shape = im.shape[:2]
+        try:
+            mask = parse_jsonstring(string, shape=shape)
+        except IndexError:
+            raise PreventUpdate
+        if mask.sum() > 0:
+            seg = superpixel_color_segmentation(im, mask)
+        else:
+            seg = np.ones(shape)
+        fill_value = 255 * np.ones(3, dtype=np.uint8)
+        dat = np.copy(im)
+        dat[np.logical_not(seg)] = fill_value
+        return array_to_data_url(dat)
+    else:
+        raise PreventUpdate
+
 
 # Page Lotation Callback
 # ------------------------------------------------------------------------
@@ -655,6 +1299,8 @@ def update_pages(pathname):
         return dash_basic
     elif pathname == "/dash_graphs":
         return dash_graphs
+    elif pathname == "/dash_components":
+        return dash_components
     else:
         return title
 
